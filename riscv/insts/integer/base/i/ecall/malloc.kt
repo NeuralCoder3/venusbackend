@@ -38,12 +38,12 @@ data class MallocNode(
             if (nodeAddr == 0) {
                 return null
             }
-            val lM = sim.loadWordwCache(nodeAddr + lowBuffer)
-            val size = sim.loadWordwCache(nodeAddr + lowBuffer + 4)
-            val free = sim.loadWordwCache(nodeAddr + lowBuffer + 8)
-            val nextNode = sim.loadWordwCache(nodeAddr + lowBuffer + 12)
-            val prevNode = sim.loadWordwCache(nodeAddr + lowBuffer + 16)
-            val uM = sim.loadWordwCache(nodeAddr + lowBuffer + 20)
+            val lM = sim.loadWordwCache(nodeAddr + lowBuffer, skipValidAccessCheck = true)
+            val size = sim.loadWordwCache(nodeAddr + lowBuffer + 4, skipValidAccessCheck = true)
+            val free = sim.loadWordwCache(nodeAddr + lowBuffer + 8, skipValidAccessCheck = true)
+            val nextNode = sim.loadWordwCache(nodeAddr + lowBuffer + 12, skipValidAccessCheck = true)
+            val prevNode = sim.loadWordwCache(nodeAddr + lowBuffer + 16, skipValidAccessCheck = true)
+            val uM = sim.loadWordwCache(nodeAddr + lowBuffer + 20, skipValidAccessCheck = true)
             val node = MallocNode(
                     size = size,
                     free = free,
@@ -55,7 +55,12 @@ data class MallocNode(
             )
 
             if (((uM != upperMagic) || (lM != lowerMagic)) && !ignore_magic) {
-                Renderer.stderr("The magic value for this malloc node is incorrect! This means you are overriding malloc metadata OR have specified the address of an incorrect malloc node!\n")
+                Renderer.stderr(
+                    "[PC=${Renderer.toHex(sim.getPC())}]" +
+                            "[ra=${Renderer.toHex(sim.getReg(1))}] " +
+                            "The magic value for this malloc node is incorrect! " +
+                            "This means you are overriding malloc metadata OR " +
+                            "are trying to use a pointer that does not point to memory that was returned by malloc!\n")
                 Renderer.stderr(node)
                 return null
             }
@@ -69,28 +74,28 @@ data class MallocNode(
 
     fun storeMagic(sim: Simulator) {
         nodes[this.nodeAddr] = this
-        sim.storeWordwCache(this.nodeAddr, lowerMagic)
-        sim.storeWordwCache(this.nodeAddr + lowBuffer + 20, upperMagic)
+        sim.storeWordwCache(this.nodeAddr, lowerMagic, skipValidAccessCheck = true)
+        sim.storeWordwCache(this.nodeAddr + lowBuffer + 20, upperMagic, skipValidAccessCheck = true)
     }
 
     fun storeSize(sim: Simulator) {
         nodes[this.nodeAddr] = this
-        sim.storeWordwCache(this.nodeAddr + lowBuffer + 4, this.size)
+        sim.storeWordwCache(this.nodeAddr + lowBuffer + 4, this.size, skipValidAccessCheck = true)
     }
 
     fun storeFree(sim: Simulator) {
         nodes[this.nodeAddr] = this
-        sim.storeWordwCache(this.nodeAddr + lowBuffer + 8, this.free)
+        sim.storeWordwCache(this.nodeAddr + lowBuffer + 8, this.free, skipValidAccessCheck = true)
     }
 
     fun storeNextNode(sim: Simulator) {
         nodes[this.nodeAddr] = this
-        sim.storeWordwCache(this.nodeAddr + lowBuffer + 12, this.nextNode)
+        sim.storeWordwCache(this.nodeAddr + lowBuffer + 12, this.nextNode, skipValidAccessCheck = true)
     }
 
     fun storePrevNode(sim: Simulator) {
         nodes[this.nodeAddr] = this
-        sim.storeWordwCache(this.nodeAddr + lowBuffer + 16, this.prevNode)
+        sim.storeWordwCache(this.nodeAddr + lowBuffer + 16, this.prevNode, skipValidAccessCheck = true)
     }
 
     fun storeNode(sim: Simulator) {
@@ -314,6 +319,36 @@ class Alloc(val sim: Simulator) {
         return this.malloc(nitems * size, calloc = true)
     }
 
+    fun isAllocdMemory(addr: Int, numBytes: Int): Boolean {
+        if (!initialized) {
+            return false
+        }
+        if (numBytes <= 0) {
+            return false
+        }
+        var m = MallocNode.loadBlock(sim, sentinelMetadata) ?: run {
+            Renderer.stderr("Failed to get the sentinel metadata block!\n")
+            Renderer.stderr(MallocNode.loadBlock(sim, sentinelMetadata, true) ?: "null")
+            return false
+        }
+
+        while (!m.isNextNull()) {
+            m = m.getNextNode(sim) ?: run {
+                return false
+            }
+            if (m.isSentinel() || m.isFree() || m.isNull()) {
+                continue
+            }
+            val endAddr = addr + numBytes - 1
+            val startWithinBounds = m.dataAddr() <= addr && addr < m.dataAddr() + m.size
+            val endWithinBounds = m.dataAddr() <= endAddr && endAddr < m.dataAddr() + m.size
+            if (startWithinBounds && endWithinBounds) {
+                return true
+            }
+        }
+        return false
+    }
+
     fun realloc(ptr: Int, size: Int): Int {
         if (size == 0) {
             return if (ptr == 0) {
@@ -339,7 +374,17 @@ class Alloc(val sim: Simulator) {
 
     fun free(ptr: Int) {
         if (ptr != 0) {
-            MallocNode.loadBlock(sim, getMetadata(ptr))?.freeNode(sim)
+            val block = MallocNode.loadBlock(sim, getMetadata(ptr))
+            if (block == null) {
+                Renderer.stderr(
+                    "[PC=${Renderer.toHex(sim.getPC())}]" +
+                            "[ra=${Renderer.toHex(sim.getReg(1))}] " +
+                            "Attempting to free memory at ${Renderer.toHex(ptr)} but could not be " +
+                            "performed. Did you pass in an invalid address to be freed?"
+                )
+            } else {
+                block.freeNode(sim)
+            }
         }
     }
 

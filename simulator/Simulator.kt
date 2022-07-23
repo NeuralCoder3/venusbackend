@@ -436,12 +436,28 @@ open class Simulator(
             val sp = state.getReg(Registers.sp)
             val heap = state.getHeapEnd()
             if ((addr > heap && addr < sp) ||
-                (upperAddr > heap && upperAddr < sp)) {
+                    (upperAddr > heap && upperAddr < sp)) {
                 throw SimulatorError(
                         "Attempting to access uninitialized memory between the stack and heap. Attempting to access '$bytes' bytes at address '${Renderer.toHex(addr)}'.",
                         handled = true)
+            } else {
+                // Only check access if it's above the heap start and before the stack. Throw an exception if accessing
+                // any heap memory that isn't allocated or has been freed. Note that this doesn't check if someone
+                // accesses memory before the heap accidentally, but hopefully this check is good enough.
+                if (addr >= MemorySegments.HEAP_BEGIN && addr < sp) {
+                    if (!alloc.isAllocdMemory(addr as Int, bytes)) {
+                        throw SimulatorError(
+                                "Attempting to access unallocated memory on the heap. " +
+                                        "Attempting to access '$bytes' bytes at address '${Renderer.toHex(addr)}'.",
+                                handled = true)
+                    }
+                }
             }
         }
+        // TODO: if the addr is >= sp, then okay
+        // TODO: if addr is
+        // TODO: cross-check whether this addr has been malloc'd and not free'd, and does not span a single malloc node
+        // Iterate through alloc nodes and interrogate
     }
 
     fun loadByte(addr: Number, handleWatchpoint: Boolean = true): Int {
@@ -487,11 +503,13 @@ open class Simulator(
         }
         return value
     }
-    fun loadWordwCache(addr: Number): Int {
+    fun loadWordwCache(addr: Number, skipValidAccessCheck: Boolean = false): Int {
         if (this.settings.alignedAddress && addr % MemSize.WORD.size != 0) {
             throw AlignmentError("Address: '" + Renderer.toHex(addr) + "' is not WORD aligned!")
         }
-        this.isValidAccess(addr, MemSize.WORD.size)
+        if (!skipValidAccessCheck) {
+            this.isValidAccess(addr, MemSize.WORD.size)
+        }
         preInstruction.add(CacheDiff(Address(addr, MemSize.WORD)))
         state.cache.read(Address(addr, MemSize.WORD))
         postInstruction.add(CacheDiff(Address(addr, MemSize.WORD)))
@@ -566,14 +584,18 @@ open class Simulator(
         postInstruction.add(MemoryDiff(addr, loadWord(addr, handleWatchpoint = false)))
         this.storeTextOverrideCheck(addr, value, MemSize.WORD)
     }
-    fun storeWordwCache(addr: Number, value: Number) {
+    fun storeWordwCache(addr: Number, value: Number, skipValidAccessCheck: Boolean = false) {
         if (this.settings.alignedAddress && addr % MemSize.WORD.size != 0) {
             throw AlignmentError("Address: '" + Renderer.toHex(addr) + "' is not WORD aligned!")
         }
         if (!this.settings.mutableText && addr in (MemorySegments.TEXT_BEGIN + 1 - MemSize.WORD.size)..state.getMaxPC().toInt()) {
             throw StoreError("You are attempting to edit the text of the program though the program is set to immutable at address " + Renderer.toHex(addr) + "!")
         }
-        this.isValidAccess(addr, MemSize.WORD.size)
+
+        // Skipping is useful for internal accesses of newly allocated / non-data memory
+        if (!skipValidAccessCheck) {
+            this.isValidAccess(addr, MemSize.WORD.size)
+        }
         preInstruction.add(CacheDiff(Address(addr, MemSize.WORD)))
         state.cache.write(Address(addr, MemSize.WORD))
         this.storeWord(addr, value)
