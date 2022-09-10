@@ -872,13 +872,13 @@ open class Simulator(
 
     private fun generateHistoryDump(history: HashMap<Number, Pair<String, String>>, prefix: String = ""): String {
         val cycles = history.keys.sortedBy { it.toInt() }
-        return cycles.reversed().joinToString(separator = "") { "$prefix${it}: ${history[it]?.first}\n$prefix${history[it]?.second}\n" }
+        return cycles.reversed().joinToString(separator = "") { "$prefix$it: ${history[it]?.first}\n$prefix${history[it]?.second}\n" }
     }
 
     fun getEbreakDumpStr(prefix: String = ""): String {
         return this.generateHistoryDump(this.ebreakHistory, prefix)
     }
-    
+
     fun getJumpDumpStr(prefix: String = ""): String {
         return this.generateHistoryDump(this.jumpHistory, prefix)
     }
@@ -895,7 +895,7 @@ open class Simulator(
             groups.add(addr shr 4 shl 4)
         }
 
-        val dump = ArrayList<String>();
+        val dump = ArrayList<String>()
         for (group in groups.sorted()) {
             var str = "${group.toString(16).padStart(8, '0')}:"
             for (i in 0..15) {
@@ -909,7 +909,7 @@ open class Simulator(
     }
 
     fun getRegDumpStr(prefix: String = ""): String {
-        var regdump = "${prefix}                    " // save space for x0
+        var regdump = "$prefix                    " // save space for x0
         for (i in 1..31) {
             if (i % 4 == 0) regdump = regdump.trimEnd() + "\n$prefix"
             val regnum = "x$i(${getRegNameFromIndex(i, true)})".padStart(8)
