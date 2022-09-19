@@ -96,11 +96,11 @@ open class Simulator(
 
         if (this.settings.memcheckVerbose) {
             linkedProgram.prog.dataMemoryAllocs.sortBy { it.first }
-            println("[memcheck] data allocs")
+            Renderer.stderr("[memcheck] data allocs\n")
             for (alloc in linkedProgram.prog.dataMemoryAllocs) {
-                println("[memcheck]     ptr=0x${alloc.first.toString(16).toUpperCase()} size=${alloc.second}")
+                Renderer.stderr("[memcheck]     ptr=0x${alloc.first.toString(16).toUpperCase()} size=${alloc.second}\n")
             }
-            println("[memcheck] end data allocs")
+            Renderer.stderr("[memcheck] end data allocs\n")
         }
     }
 
@@ -478,7 +478,7 @@ open class Simulator(
         val dbg = this.linkedProgram.dbg[instrIdx]
 
         if (this.settings.memcheckVerbose) {
-            Renderer.printConsole("[memcheck] access: addr=${Renderer.toHex(addr)} size=$bytes pc=${Renderer.toHex(pc)} file=${dbg.programName}:${dbg.dbg.lineNo} instr=${dbg.dbg.line.trim()}\n")
+            Renderer.stderr("[memcheck] access: addr=${Renderer.toHex(addr)} size=$bytes pc=${Renderer.toHex(pc)} file=${dbg.programName}:${dbg.dbg.lineNo} instr=${dbg.dbg.line.trim()}\n")
         }
 
         var referenceBlock: Pair<Int, Int>? = null
@@ -525,14 +525,14 @@ open class Simulator(
             "\tRegisters:\n" +
             regdump.trimEnd()
         if (referenceBlock.first == 0) {
-            Renderer.displayError(
+            Renderer.stderr(
                 "[memcheck] Invalid memory access of size $bytes. " +
                         "Address ${Renderer.toHex(addr)} is $memType.\n" +
                         debugStr + "\n")
             return
         }
         if (diff == -1) diff = max(0, addr.toInt() - (referenceBlock.first + referenceBlock.second))
-        Renderer.displayError(
+        Renderer.stderr(
             "[memcheck] Invalid memory access of size $bytes. " +
                     "Address ${Renderer.toHex(addr)} is $diff bytes $memLocationRel a block of size ${referenceBlock.second} $memType.\n" +
                     debugStr + "\n")
@@ -583,9 +583,9 @@ open class Simulator(
                 errorMsg += "\n[memcheck] For detailed leak analysis, rerun with --memcheckVerbose"
             }
             if (this.settings.memcheckVerbose || numBlocks > 0) {
-                Renderer.displayError(errorMsg + "\n")
+                Renderer.stderr(errorMsg + "\n")
             } else if (this.settings.memcheckVerbose) {
-                Renderer.printConsole(errorMsg + "\n")
+                Renderer.stderr(errorMsg + "\n")
             }
         }
     }

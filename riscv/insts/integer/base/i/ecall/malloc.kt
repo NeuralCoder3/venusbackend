@@ -387,13 +387,13 @@ class MCAlloc(sim: Simulator) : Alloc(sim) {
     override fun malloc(size: Int, calloc: Boolean): Int {
         val prefix = if (calloc) "calloc" else "malloc"
         if (verbose) {
-            Renderer.printConsole("[memcheck] $prefix: ${this.getDebugStr()}\n")
+            Renderer.stderr("[memcheck] $prefix: ${this.getDebugStr()}\n")
         }
 
         val newSize = size * 3
         val rawPtr = super.malloc(newSize, calloc)
         if (rawPtr == 0) {
-            Renderer.printConsole("[memcheck] $prefix: could not allocate $size bytes of space\n")
+            Renderer.stderr("[memcheck] $prefix: could not allocate $size bytes of space\n")
             return 0
         }
 
@@ -403,7 +403,7 @@ class MCAlloc(sim: Simulator) : Alloc(sim) {
         heapMemoryFrees.remove(Pair(actualPtr, size))
 
         if (verbose) {
-            Renderer.printConsole("[memcheck] $prefix: ptr=${Renderer.toHex(actualPtr)} rawptr=${Renderer.toHex(rawPtr)} size=$size\n")
+            Renderer.stderr("[memcheck] $prefix: ptr=${Renderer.toHex(actualPtr)} rawptr=${Renderer.toHex(rawPtr)} size=$size\n")
             this.printStatus()
         }
         return actualPtr
@@ -411,17 +411,17 @@ class MCAlloc(sim: Simulator) : Alloc(sim) {
 
     override fun free(ptr: Int) {
         if (verbose) {
-            Renderer.printConsole("[memcheck] free: ${this.getDebugStr()}\n")
+            Renderer.stderr("[memcheck] free: ${this.getDebugStr()}\n")
         }
 
         val rawPtr = heapPointerMap[ptr]
         if (rawPtr == null) {
-            Renderer.printConsole("[memcheck] free: could not find ptr=$ptr\n")
+            Renderer.stderr("[memcheck] free: could not find ptr=$ptr\n")
             return
         }
         val mn = MallocNode.loadBlock(sim, getMetadata(rawPtr))
         if (mn == null) {
-            Renderer.printConsole("[memcheck] free: could not find node for ptr=$ptr\n")
+            Renderer.stderr("[memcheck] free: could not find node for ptr=$ptr\n")
             return
         }
 
@@ -432,24 +432,24 @@ class MCAlloc(sim: Simulator) : Alloc(sim) {
         // mn.freeNode(sim)
 
         if (verbose) {
-            Renderer.printConsole("[memcheck] free: ptr=${Renderer.toHex(ptr)} rawptr=${Renderer.toHex(rawPtr)} size=${mn.size}\n")
+            Renderer.stderr("[memcheck] free: ptr=${Renderer.toHex(ptr)} rawptr=${Renderer.toHex(rawPtr)} size=${mn.size}\n")
             this.printStatus()
         }
     }
 
     override fun realloc(ptr: Int, size: Int): Int {
         if (verbose) {
-            Renderer.printConsole("[memcheck] realloc: ${this.getDebugStr()}\n")
+            Renderer.stderr("[memcheck] realloc: ${this.getDebugStr()}\n")
         }
 
         if (size == 0) {
-            Renderer.printConsole("[memcheck] realloc: new size 0, freeing\n")
+            Renderer.stderr("[memcheck] realloc: new size 0, freeing\n")
             if (ptr != 0) this.free(ptr)
             return 0
         }
         val tm: MallocNode? = MallocNode.loadBlock(sim, getMetadata(ptr))
         if ((ptr == 0) || (tm == null)) {
-            Renderer.printConsole("[memcheck] realloc: invalid old pointer, malloc'ing\n")
+            Renderer.stderr("[memcheck] realloc: invalid old pointer, malloc'ing\n")
             return this.malloc(size)
         }
         val m: MallocNode = tm
@@ -457,7 +457,7 @@ class MCAlloc(sim: Simulator) : Alloc(sim) {
         val newBlock = this.malloc(size, false)
         if (newBlock == 0) {
             if (verbose) {
-                Renderer.printConsole("[memcheck] realloc: could not malloc space for new ptr\n")
+                Renderer.stderr("[memcheck] realloc: could not malloc space for new ptr\n")
             }
             return 0
         }
@@ -465,7 +465,7 @@ class MCAlloc(sim: Simulator) : Alloc(sim) {
         this.free(ptr)
 
         if (verbose) {
-            Renderer.printConsole("[memcheck] realloc: oldptr=${Renderer.toHex(ptr)} newptr=$newBlock oldsize=${m.size} newsize=$size\n")
+            Renderer.stderr("[memcheck] realloc: oldptr=${Renderer.toHex(ptr)} newptr=$newBlock oldsize=${m.size} newsize=$size\n")
             this.printStatus()
         }
         return newBlock
@@ -478,16 +478,16 @@ class MCAlloc(sim: Simulator) : Alloc(sim) {
     private fun printStatus() {
         this.heapMemoryAllocs.sortBy { it.first }
         this.heapMemoryFrees.sortBy { it.first }
-        Renderer.printConsole("[memcheck] heap allocs\n")
+        Renderer.stderr("[memcheck] heap allocs\n")
         for (alloc in this.heapMemoryAllocs) {
-            Renderer.printConsole("[memcheck]     ptr=${Renderer.toHex(alloc.first)} size=${alloc.second}\n")
+            Renderer.stderr("[memcheck]     ptr=${Renderer.toHex(alloc.first)} size=${alloc.second}\n")
         }
-        Renderer.printConsole("[memcheck] end heap allocs\n")
-        Renderer.printConsole("[memcheck] heap frees\n")
+        Renderer.stderr("[memcheck] end heap allocs\n")
+        Renderer.stderr("[memcheck] heap frees\n")
         for (alloc in this.heapMemoryFrees) {
-            Renderer.printConsole("[memcheck]     ptr=${Renderer.toHex(alloc.first)} size=${alloc.second}\n")
+            Renderer.stderr("[memcheck]     ptr=${Renderer.toHex(alloc.first)} size=${alloc.second}\n")
         }
-        Renderer.printConsole("[memcheck] end heap frees\n")
+        Renderer.stderr("[memcheck] end heap frees\n")
     }
 
     private fun getDebugStr(): String {
