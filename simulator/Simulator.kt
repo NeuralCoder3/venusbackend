@@ -566,7 +566,7 @@ open class Simulator(
         }
     }
 
-    private fun checkNumFreeBlocks() {
+    fun checkNumFreeBlocks() {
         if (this.settings.memcheck && this.alloc is MCAlloc) {
             val numBlocks = this.alloc.heapMemoryAllocs.size
             val numBytes = if (numBlocks == 0) {
@@ -580,7 +580,7 @@ open class Simulator(
                     errorMsg += "\n\t${block.second} bytes at ${Renderer.toHex(block.first)} is lost"
                 }
             } else {
-                errorMsg += "\n[memcheck] For detailed leak analysis, rerun with --memcheckVerbose"
+                errorMsg += "\n[memcheck] For detailed leak analysis, rerun in verbose mode"
             }
             if (this.settings.memcheckVerbose || numBlocks > 0) {
                 Renderer.stderr(errorMsg + "\n")
