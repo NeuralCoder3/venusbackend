@@ -415,9 +415,10 @@ internal class AssemblerPassOne(private val text: String, name: String = "anonym
                     parseAssemblerDirective(args[0], args.drop(1), pline, dbg)
                 } else {
                     allow_custom_memory_segments = false
-                    val expandedInsts = replacePseudoInstructions(args, dbg)
+                    val expandedInsts = processInstruction(args, dbg)
                     for (inst in expandedInsts) {
 //                        val dbg = DebugInfo(currentLineNumber, line, currentTextOffset, prog)
+                        addLabels(inst)
                         val instsize = try {
                             Instruction[getInstruction(inst), dbg].format.length
                         } catch (e: AssemblerError) {
@@ -460,27 +461,27 @@ internal class AssemblerPassOne(private val text: String, name: String = "anonym
     private fun isAssemblerDirective(cmd: String) = cmd.startsWith(".")
 
     /**
-     * Replaces any pseudoinstructions which occur in our program.
+     * Process an instruction within the program
      *
      * @param tokens a list of strings corresponding to the space delimited line
      * @return the corresponding TAL instructions (possibly unchanged)
      */
-    private fun replacePseudoInstructions(tokens: LineTokens, dbg: DebugInfo): List<LineTokens> {
-        try {
-            val cmd = getInstruction(tokens)
-            // This is meant to allow for cmds with periods since the pseudodispatcher does not allow for special chars.
-            val cleanedCMD = cmd.replace(".", "")
-            val pw = PseudoDispatcher.valueOf(cleanedCMD).pw
-            return pw(tokens, this, dbg)
-        } catch (t: Throwable) {
-            /* TODO: don't use throwable here */
-            /* not a pseudoinstruction, or expansion failure */
-            val linetokens = parsePossibleMachineCode(tokens, dbg)
-            return linetokens
-        }
+    private fun processInstruction(tokens: LineTokens, dbg: DebugInfo): List<LineTokens> {
+        val pseudo = replacePseudoInstructions(tokens, dbg)
+        if (pseudo != null) return pseudo
+
+        val machine = replaceMachineCode(tokens, dbg)
+        if (machine != null) return machine
+
+        return listOf(tokens)
     }
 
-    private fun parsePossibleMachineCode(tokens: LineTokens, dbg: DebugInfo): List<LineTokens> {
+    /**
+     * Adds labels to a program
+     *
+     * @param tokens a list of strings corresponding to the space delimited line
+     */
+    private fun addLabels(tokens: LineTokens) {
         val c = getInstruction(tokens)
         if (c in listOf("beq", "bge", "bgeu", "blt", "bltu", "bne")) {
             try {
@@ -500,34 +501,46 @@ internal class AssemblerPassOne(private val text: String, name: String = "anonym
             } catch (e: Throwable) {
                 //
             }
-        } else {
+        }
+    }
+
+    /**
+     * Replaces any pseudoinstructions which occur in our program.
+     *
+     * @param tokens a list of strings corresponding to the space delimited line
+     * @return the corresponding TAL instructions (possibly unchanged)
+     */
+    private fun replacePseudoInstructions(tokens: LineTokens, dbg: DebugInfo): List<LineTokens>? {
+        try {
+            val cmd = getInstruction(tokens)
+            // This is meant to allow for cmds with periods since the pseudodispatcher does not allow for special chars.
+            val cleanedCMD = cmd.replace(".", "")
+            val pw = PseudoDispatcher.valueOf(cleanedCMD).pw
+            return pw(tokens, this, dbg)
+        } catch (t: Throwable) {
+            return null
+        }
+    }
+
+    private fun replaceMachineCode(tokens: LineTokens, dbg: DebugInfo): List<LineTokens>? {
+        val c = getInstruction(tokens)
+        try {
+            var cmd = userStringToInt(c)
             try {
-                var cmd = userStringToInt(c)
-                try {
-                    val decoded = Instruction[MachineCode(cmd)].disasm(MachineCode(cmd))
-                    val lex = Lexer.lexLine(decoded, dbg).second.toMutableList()
-                    if (lex[0] == "jal") {
-                        val loc = getOffset() + lex[2].toInt()
-                        prog.addLabel("L$loc", loc)
-                        lex[2] = "L$loc"
-                    }
-                    if (lex[0] in listOf("beq", "bge", "bgeu", "blt", "bltu", "bne")) {
-                        val loc = getOffset() + lex[3].toInt()
-                        prog.addLabel("L$loc", loc)
-                        lex[3] = "L$loc"
-                    }
-                    val t = listOf(lex)
-                    return t
-                } catch (e: SimulatorError) {
-                    errors.add(AssemblerError(currentLineNumber, e))
-                }
-            } catch (e: NumberFormatException) {
-                if (c.startsWith("0x") || c.startsWith("0b") || c.matches(Regex("\\d+"))) {
-                    errors.add(AssemblerError(currentLineNumber, e))
-                }
+                val decoded = Instruction[MachineCode(cmd)].disasm(MachineCode(cmd))
+                val lex = Lexer.lexLine(decoded, dbg).second.toMutableList()
+                val parsedTokens = replacePseudoInstructions(lex, dbg)
+                if (parsedTokens != null) return parsedTokens
+                return null
+            } catch (e: SimulatorError) {
+                errors.add(AssemblerError(currentLineNumber, e))
+            }
+        } catch (e: NumberFormatException) {
+            if (c.startsWith("0x") || c.startsWith("0b") || c.matches(Regex("\\d+"))) {
+                errors.add(AssemblerError(currentLineNumber, e))
             }
         }
-        return listOf(tokens)
+        return null
     }
 
     /**
