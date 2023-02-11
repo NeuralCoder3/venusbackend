@@ -1,5 +1,7 @@
 package venusbackend.assembler
 
+import venus.Driver
+
 data class LintError(val lineNumber: Int, val message: String, val isError: Boolean = true)
 
 /**
@@ -16,7 +18,7 @@ object Linter {
      * @fixme this relies on Kotlin using JS array for Array, but it will probably remain that way
      */
     fun lint(text: String): Array<LintError> {
-        val (_, errors, warnings) = Assembler.assemble(text, abspath = "")
+        val (_, errors, warnings) = Assembler.assemble(text, abspath = "", expandDataSegment = Driver.simSettings.memcheck)
         val linterErrors = ArrayList<LintError>()
         for (error in errors) {
             linterErrors.add(LintError(error.line ?: -1, error.message ?: ""))

@@ -90,6 +90,9 @@ open class Simulator(
                     Renderer.updateRegister(Registers.ra, state.getMaxPC())
                 } catch (e: Exception) {}
             }
+
+            // Initialize args
+            this.addArgsToMem()
         }
 
 //        breakpoints = Array(linkedProgram.prog.insts.size, { false })
