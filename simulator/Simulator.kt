@@ -507,7 +507,7 @@ open class Simulator(
                     diff = max(0, referenceBlock.first - addr.toInt())
                 } else {
                     referenceBlock = results.second
-                    memType = "alloc'd"
+                    memType = "not alloc'd"
                 }
             }
         } else if ((addr >= MemorySegments.STATIC_BEGIN && addr < MemorySegments.HEAP_BEGIN) ||
