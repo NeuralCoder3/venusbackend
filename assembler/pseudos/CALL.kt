@@ -14,10 +14,10 @@ object CALL : PseudoWriter() {
     override operator fun invoke(args: LineTokens, state: AssemblerPassOne, dbg: DebugInfo): List<LineTokens> {
         checkArgsLength(args, 2, dbg)
 
-        val auipc = listOf("auipc", "x6", "0")
+        val auipc = listOf("auipc", "x1", "0")
         state.addRelocation(PCRelHiRelocator, state.getOffset(), args[1], dbg)
 
-        val jalr = listOf("jalr", "x1", "x6", "0")
+        val jalr = listOf("jalr", "x1", "x1", "0")
         state.addRelocation(PCRelLoRelocator, state.getOffset() + 4, args[1], dbg)
 
         return listOf(auipc, jalr)
