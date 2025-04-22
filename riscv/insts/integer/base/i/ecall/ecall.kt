@@ -17,6 +17,7 @@ import venusbackend.riscv.insts.dsl.parsers.DoNothingParser
 import venusbackend.riscv.MemorySegments
 import venusbackend.simulator.FilesHandler
 import venusbackend.simulator.Simulator
+import java.util.Scanner
 
 val ecall = Instruction(
     // Fixme The long and quadword are only build for a 32 bit system!
@@ -32,9 +33,12 @@ val ecall = Instruction(
                 1 -> printInteger(sim)
                 4 -> printString(sim)
                 5 -> atoi(sim)
+                6 -> readInteger(sim) // simulate MIPS syscall 5
+                8 -> readString(sim)
                 9 -> sbrk(sim)
                 10 -> exit(sim)
                 11 -> printChar(sim)
+                12 -> readChar(sim)
                 13 -> openFile(sim)
                 14 -> readFile(sim)
                 15 -> writeFile(sim)
@@ -44,6 +48,8 @@ val ecall = Instruction(
                 19 -> feof(sim)
                 20 -> ferror(sim)
                 34 -> printHex(sim)
+                0x130 -> nothing(sim)
+                0x131 -> readCharPolling(sim)
                 0x3CC -> clib(sim)
                 else -> Renderer.printConsole("Invalid ecall $whichCall")
             }
@@ -57,9 +63,12 @@ val ecall = Instruction(
                 1L -> printInteger(sim)
                 4L -> printString(sim)
                 5L -> atoi(sim)
+                6L -> readInteger(sim) // simulate MIPS syscall 5
+                8L -> readString(sim)
                 9L -> sbrk(sim)
                 10L -> exit(sim)
                 11L -> printChar(sim)
+                12L -> readChar(sim)
                 13L -> openFile(sim)
                 14L -> readFile(sim)
                 15L -> writeFile(sim)
@@ -69,6 +78,8 @@ val ecall = Instruction(
                 19L -> feof(sim)
                 20L -> ferror(sim)
                 34L -> printHex(sim)
+                0x130L -> nothing(sim)
+                0x131L -> readCharPolling(sim)
                 else -> Renderer.printConsole("Invalid ecall $whichCall")
             }
             if (!(whichCall == 10L || whichCall == 17L)) {
@@ -81,9 +92,12 @@ val ecall = Instruction(
                 QuadWord(1) -> printInteger(sim)
                 QuadWord(4) -> printString(sim)
                 QuadWord(5) -> atoi(sim)
+                QuadWord(6) -> readInteger(sim) // simulate MIPS syscall 5
+                QuadWord(8) -> readString(sim)
                 QuadWord(9) -> sbrk(sim)
                 QuadWord(10) -> exit(sim)
                 QuadWord(11) -> printChar(sim)
+                QuadWord(12) -> readChar(sim)
                 QuadWord(13) -> openFile(sim)
                 QuadWord(14) -> readFile(sim)
                 QuadWord(15) -> writeFile(sim)
@@ -93,6 +107,8 @@ val ecall = Instruction(
                 QuadWord(19) -> feof(sim)
                 QuadWord(20) -> ferror(sim)
                 QuadWord(34) -> printHex(sim)
+                QuadWord(0x130) -> nothing(sim)
+                QuadWord(0x131) -> readCharPolling(sim)
                 else -> Renderer.printConsole("Invalid ecall $whichCall")
             }
             if (!(whichCall == QuadWord(10) || whichCall == QuadWord(17))) {
@@ -106,9 +122,12 @@ enum class Syscall(val syscall: Int) {
     PRINT_INT(1),
     PRINT_STR(4),
     ATOI(5),
+    READ_INT(6),
+    READ_STR(8),
     SBRK(9),
     EXIT(10),
     PRINT_CHAR(11),
+    READ_CHAR(12),
     OPEN(13),
     READ(14),
     WRITE(15),
@@ -117,7 +136,9 @@ enum class Syscall(val syscall: Int) {
     FLUSH(18),
     FEOF(19),
     FERROR(20),
-    PRINT_HEX(34)
+    PRINT_HEX(34),
+    NOTHING(0x130),
+    READ_CHAR_POLLING(0x131),
 }
 
 // All file operations will return -1 if the file descriptor is not found.
@@ -194,6 +215,98 @@ private fun writeFile(sim: Simulator) {
     sim.setReg(Registers.a0, result)
 }
 
+var read_string : String? = null
+
+private fun readCharPolling(sim: Simulator) {
+    /**
+     * a0=0 => all input read
+     * a0=1 => waiting
+     * a0=2 => input still available
+     * a1=char that was read
+     * same as VSCode venus ecall
+     */
+    if (read_string == null) {
+        read_string = readLine()
+    }
+    if (read_string!!.isEmpty()) {
+        sim.setReg(Registers.a0, 0)
+        sim.setReg(Registers.a1, 0)
+        read_string = null
+    } else {
+        val chr = read_string!!.first()
+        read_string = read_string!!.drop(1)
+        sim.setReg(Registers.a0, 2)
+        sim.setReg(Registers.a1, chr.toInt())
+    }
+}
+
+private fun nothing(sim: Simulator) {
+    /**
+     * compatibility for VSCode venus ecall
+     */
+    // Nothing to do here
+}
+
+private fun readString(sim: Simulator) {
+    /**
+     * a1 = buffer, a2 = maximum number of characters to read
+     */
+    val bufferAddress = sim.getReg(Registers.a1).toInt()
+    val size = sim.getReg(Registers.a2).toInt()
+    if (size < 0) {
+        sim.setReg(Registers.a0, 0)
+        return
+    }
+    val scanner = Scanner(System.`in`)
+    val string = scanner.nextLine()
+    val bytes = string.toByteArray()
+    var offset = 0
+    for (byte in bytes) {
+        if (offset >= size) {
+            break
+        }
+        sim.storeByte(bufferAddress + offset, byte.toInt())
+        offset++
+    }
+    // Add null terminator
+    sim.storeByte(bufferAddress + offset, 0)
+    offset++
+    // Set the number of bytes read in a0
+    sim.setReg(Registers.a0, offset)
+}
+
+private fun readChar(sim: Simulator) {
+    /**
+     * a0 contains the read character
+     */
+    var char: Char;
+    val os = System.getProperty("os.name").toLowerCase()
+
+    if (os.contains("linux") || os.contains("mac")) {
+        try {
+            // Disable echo and canonical mode (no Enter needed)
+            Runtime.getRuntime().exec(arrayOf("/bin/sh", "-c", "stty -echo -icanon")).waitFor()
+            char = System.`in`.read().toChar()
+            // Restore terminal settings
+            Runtime.getRuntime().exec(arrayOf("/bin/sh", "-c", "stty echo icanon")).waitFor()
+        } catch (e: Exception) {
+            char = System.`in`.read().toChar()
+        }
+    } else {
+        char = System.`in`.read().toChar()
+    }
+    sim.setReg(Registers.a0, char.toInt())
+}
+
+private fun readInteger(sim: Simulator) {
+    /**
+     * a0 contains the read integer
+     */
+    val scanner = Scanner(System.`in`)
+    val value = scanner.nextInt()
+    sim.setReg(Registers.a0, value)
+}
+
 private fun seekFile(sim: Simulator) {
 //
 }
@@ -215,7 +328,7 @@ private fun closeFile(sim: Simulator) {
 private fun fflush(sim: Simulator) {
     /**
      * Returns zero on success. Otherwise EOF is returned and the error indicator of the file stream is set.
-     * a0=19, a1=filedescriptor -> a0=if end of file
+     * a0=18, a1=filedescriptor -> ​0​ on success, EOF otherwise
      */
     val fdID = sim.getReg(Registers.a1).toInt()
     val a0 = sim.filesHandler.flushFileDescriptor(fdID)
@@ -264,6 +377,9 @@ private fun printString(sim: Simulator) {
 }
 
 private fun atoi(sim: Simulator) {
+    /*
+    * converts the string pointed to by a1 to an integer and returns the value in a0.
+    */
     val str_pointer = sim.getReg(Registers.a1)
     val s = getString(sim, str_pointer)
     val n = try {
