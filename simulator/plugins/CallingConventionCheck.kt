@@ -208,7 +208,7 @@ class CallingConventionCheck(var returnOnlya0: Boolean = false) : SimulatorPlugi
     fun isCall(sim: Simulator, pre: PCDiff, post: PCDiff, mcode: MachineCode): Boolean {
         val inst = Instruction[mcode]
         return if (post.pc != pre.pc + mcode.length) {
-            inst.name == jal.name && sim.linkedProgram.prog.isAddrGlobalLabel(post.pc)
+            inst.name == jal.name && sim.linkedProgram.prog.isAddrGlobalLabel(post.pc) && mcode[InstructionField.RD] != Registers.zero 
         } else {
             false
         }
